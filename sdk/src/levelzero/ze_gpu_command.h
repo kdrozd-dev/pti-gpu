@@ -71,6 +71,7 @@ struct ZeKernelCommand {
   uint64_t device_timer_mask_;
   ze_event_handle_t event_self = nullptr;  // in Local mode this event goes after traced GPU op
   ZeEventView<ZeEventPool> event_swap;     // event created in Local collection mode
+  ZeEventView<ZeEventPool> instrumentation_completion_event;
   ze_device_handle_t device =
       nullptr;  // Device where the operation is submitted, associated with command list
   uint64_t kernel_id = 0;
@@ -98,6 +99,11 @@ struct ZeKernelCommand {
   ze_result_t result_ = ZE_RESULT_SUCCESS;
   utils::ze::TimestampBuffer timestamp = nullptr;
   ZeEventView<ZeEventPool> timestamp_query_event;
+
+  bool InstrumentationReady() const {
+    return (instrumentation_completion_event.Empty() || instrumentation_completion_event.Ready()) &&
+           (event_swap.Empty() || event_swap.Ready());
+  }
 };
 
 struct ZeCommandQueue {

@@ -14,6 +14,7 @@
 
 #include "utils.h"
 #include "ze_event_managers.h"
+#include "ze_gpu_command.h"
 #include "ze_utils.h"
 
 namespace {
@@ -69,6 +70,35 @@ class ZeEventPoolManagerTestSuite
 
   std::vector<ze_context_handle_t> ctx_list_;
 };
+
+TEST_F(ZeEventPoolTestSuite, SwapEventRequiresRetiredInstrumentation) {
+  ZeEventPool pool(ctx_, 3U);
+  auto application_event = pool.AcquireEvent();
+  ZeKernelCommand command{};
+  command.event_self = application_event.Get();
+  command.event_swap = pool.AcquireEvent();
+  command.instrumentation_completion_event = pool.AcquireEvent();
+
+  ASSERT_EQ(zeEventHostSignal(command.event_self), ZE_RESULT_SUCCESS);
+  EXPECT_FALSE(command.InstrumentationReady());
+  ASSERT_EQ(zeEventHostSignal(command.event_swap.Get()), ZE_RESULT_SUCCESS);
+  // Timestamp readiness alone does not retire GPU waits on the swap event.
+  EXPECT_FALSE(command.InstrumentationReady());
+  ASSERT_EQ(zeEventHostSignal(command.instrumentation_completion_event.Get()), ZE_RESULT_SUCCESS);
+  EXPECT_TRUE(command.InstrumentationReady());
+  EXPECT_TRUE(command.event_swap.ResetSignal());
+  EXPECT_FALSE(command.InstrumentationReady());
+}
+
+TEST_F(ZeEventPoolTestSuite, SwapEventReadinessWithoutCompletionMarker) {
+  ZeEventPool pool(ctx_, 1U);
+  ZeKernelCommand command{};
+  EXPECT_TRUE(command.InstrumentationReady());
+  command.event_swap = pool.AcquireEvent();
+  EXPECT_FALSE(command.InstrumentationReady());
+  ASSERT_EQ(zeEventHostSignal(command.event_swap.Get()), ZE_RESULT_SUCCESS);
+  EXPECT_TRUE(command.InstrumentationReady());
+}
 
 TEST_F(ZeEventPoolTestSuite, TestConstructionWithOneEvent) { ZeEventPool event_pool(ctx_, 1U); }
 

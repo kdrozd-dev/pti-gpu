@@ -971,6 +971,12 @@ class ZeCollector {
   // Heavy handed operation - only call if the user's event is signaled and we have to wait for
   // kernel timestamps to be available.
   static bool EnsureTimestampsAvailable(const ZeKernelCommand* command) {
+    // The user's event can be reused, and a signaled swap event can still
+    // have pending GPU waiters. Only recycle it once instrumentation retires.
+    if (!command->InstrumentationReady()) {
+      return false;
+    }
+
     static constexpr auto kTimeout =
         std::chrono::nanoseconds(std::chrono::microseconds(50)).count();
 
@@ -995,6 +1001,9 @@ class ZeCollector {
   }
 
   bool AbleToProcessCommand(const ZeKernelCommand* command) {
+    if (!command->instrumentation_completion_event.Empty()) {
+      return EnsureTimestampsAvailable(command);
+    }
     ze_result_t status = ZE_RESULT_SUCCESS;
     const bool destroyed = QueryEventStatusUnlessDestroyed(command->event_self, status);
     const bool event_signaled = (status == ZE_RESULT_SUCCESS || destroyed);
@@ -2461,6 +2470,16 @@ class ZeCollector {
           }
         }
 
+        if (!command->event_swap.Empty()) {
+          // A zero-wait barrier retires all preceding instrumentation, including
+          // GPU waits on the swap event, before that event can be recycled.
+          command->instrumentation_completion_event =
+              event_pool_manager_.AcquireEvent(command->context);
+          overhead::ScopedOverheadCollector overhead_collector{zeCommandListAppendBarrier_id};
+          const auto completion_result = zeCommandListAppendBarrier(
+              command->command_list, command->instrumentation_completion_event.Get(), 0, nullptr);
+          PTI_ASSERT(completion_result == ZE_RESULT_SUCCESS);
+        }
         command->queue = reinterpret_cast<ze_command_queue_handle_t>(command->command_list);
         submitted_commands_.push_back(std::move(p_command));
         SPDLOG_TRACE("\tImmediate CmdList, command: {} pushed to submitted_commands_, queue: {}",

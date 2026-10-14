@@ -226,7 +226,7 @@ if (TARGET LevelZero::level-zero)
   )
 
   target_link_libraries(ze_event_manager_tests PUBLIC GTest::gmock
-     GTest::gtest_main LevelZero::level-zero spdlog::spdlog fmt::fmt)
+     GTest::gtest_main LevelZero::level-zero LevelZero::level-zero-ext spdlog::spdlog fmt::fmt)
 
    gtest_discover_tests(
       ze_event_manager_tests
